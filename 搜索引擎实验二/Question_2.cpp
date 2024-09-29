@@ -39,18 +39,16 @@ void BuildTable(std::ifstream& file, IndexTable& table)
 	}
 }
 
-bool SearchWord(IndexTable table)
+bool SearchWord(IndexTable table, std::string& word)
 {
-	std::string word;
-	std::cout << "Please Enter# ";
-	std::cin >> word;
-
 	auto pos = table.find(word);
 	if (pos != table.end())
 	{
 		std::cout << pos->first << ": ";
 		std::for_each(pos->second.begin(), pos->second.end(), [](const int& val) {std::cout << val << " "; });
 		std::cout << std::endl;
+		
+		return true;
 	}
 
 	return false;
@@ -63,7 +61,16 @@ int main()
 	IndexTable table;
 	BuildTable(in, table);
 	
-	SearchWord(table);
+	while (true)
+	{
+		std::string word;
+		std::cout << "Please Enter£¨q is quit£©# ";
+		std::cin >> word;
+
+		if (word == "q") break;
+
+		if (!SearchWord(table, word)) std::cout << word << " does not exist !!!" << std::endl;
+	}
 
 	return 0;
 }
