@@ -1,10 +1,37 @@
+import json
 import requests
 from bs4 import BeautifulSoup
 
+'''''
+本模块只是负责对数据的爬取
+并对区区的数据提取标题正文链接等之后返回
+'''''
+
+PrefixUrl = "https://baike.baidu.com"
+
+class MyItem:
+    def __init__(self):
+        self.Id = -1
+        self.Url = ""
+        self.Html = ""
+        self.Title = ""
+        self.Content = ""
+        self.IncludedUrl = []
+
+    def toJson(self):
+        item_dict = {
+            "id": self.Id,
+            "url": self.Url,
+            "title": self.Title,
+            "content": self.Content,
+            "urls": self.IncludedUrl
+        }
+
+        json_str = json.dumps(item_dict, ensure_ascii=False)
+        return json_str
 
 class Crawler:
-    def __init__(self, id, url):
-        self.__Id = id
+    def __init__(self, url):
         self.__Url = url
         self.__Html = ""
         self.__Title = ""
@@ -21,8 +48,6 @@ class Crawler:
         if not Response.ok:
             return Response.status_code
         self.__Html = Response.text
-        with open("test.txt", "w+", encoding="utf-8") as file:
-            file.write(self.__Html)
 
     def ParseTitle(self, soup: BeautifulSoup):
         title = soup.find("title")
@@ -36,8 +61,15 @@ class Crawler:
             return "None..."
 
     def ParseUrls(self, soup):
-        a_tags = soup.findAll("a")
-        print(a_tags)
+        a_tags = soup.findAll("a", href=True)
+        for a in a_tags:
+            href = a['href']
+            # 去除片段标识符
+            if "#" not in href:
+                self.__IncludedUrl.append(a['href'])
+
+        # 简单的链接处理添加资源路径
+        self.__IncludedUrl = [PrefixUrl + url if "https" or "http" not in url else url for url in self.__IncludedUrl]
 
     def Parser(self):
         soup = BeautifulSoup(self.__Html, 'lxml')
@@ -47,7 +79,16 @@ class Crawler:
         self.__Content = self.ParseContent(soup)
         print(f"Content: {self.__Content}")
         self.ParseUrls(soup)
+        print(f"Num of urls: {len(self.__IncludedUrl)}")
 
     def Work(self):
         self.Downloader()
         self.Parser()
+
+        item = MyItem()
+        item.Title = self.__Title
+        item.Html = self.__Html
+        item.Content = self.__Content
+        item.IncludedUrl = self.__IncludedUrl
+
+        return item
