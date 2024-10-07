@@ -20,6 +20,10 @@ class Stack:
                 raise IndexError("pop from empty stack")
             return self.__stack.pop()
 
+    def qsize(self):
+        with self.__lock:
+            return self.__size
+
     def empty(self):
         with self.__lock:
             return self.__size == 0

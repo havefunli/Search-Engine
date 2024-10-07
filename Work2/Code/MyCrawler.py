@@ -1,12 +1,12 @@
 import json
 import requests
+from MyLogging import logger
 from bs4 import BeautifulSoup
 
 '''''
 本模块只是负责对数据的爬取
 并对区区的数据提取标题正文链接等之后返回
 '''''
-
 PrefixUrl = "https://baike.baidu.com"
 
 class MyItem:
@@ -46,19 +46,29 @@ class Crawler:
 
         Response = requests.get(self.__Url, headers=headers, stream=True)
         if not Response.ok:
-            return Response.status_code
+            status_code = Response.status_code
+            logger.warning(f"{self.__Url} 未正常连接，返回错误码 {status_code}")
+            return status_code
+        logger.debug(f"{self.__Url} 成功爬取该网页")
         self.__Html = Response.text
 
     def ParseTitle(self, soup: BeautifulSoup):
         title = soup.find("title")
-        return title.string
+        logger.debug(f"已解析标题: {title}")
+        if title:
+            return title.string
+        else:
+            return "None"
 
     def ParseContent(self, soup: BeautifulSoup):
         meta_tag = soup.find("meta", attrs={"name": "description"})
         if meta_tag:
-            return meta_tag['content']
+            content = meta_tag['content']
+            logger.debug(f"成功解析正文: {content}")
+            return content
         else:
-            return "None..."
+            logger.warning("该正文内容为空")
+            return ""
 
     def ParseUrls(self, soup):
         a_tags = soup.findAll("a", href=True)
@@ -69,17 +79,17 @@ class Crawler:
                 self.__IncludedUrl.append(a['href'])
 
         # 简单的链接处理添加资源路径
-        self.__IncludedUrl = [PrefixUrl + url if "https" or "http" not in url else url for url in self.__IncludedUrl]
+        self.__IncludedUrl = [PrefixUrl + url if not url.startswith(("http://", "https://")) else url
+                              for url in self.__IncludedUrl]
+        logger.debug("成功解析所有子链接")
 
     def Parser(self):
         soup = BeautifulSoup(self.__Html, 'lxml')
 
         self.__Title = self.ParseTitle(soup)
-        print(f"Title: {self.__Title}")
         self.__Content = self.ParseContent(soup)
-        print(f"Content: {self.__Content}")
         self.ParseUrls(soup)
-        print(f"Num of urls: {len(self.__IncludedUrl)}")
+        logger.debug(f"{self.__Url} 的解析任务完成")
 
     def Work(self):
         self.Downloader()
