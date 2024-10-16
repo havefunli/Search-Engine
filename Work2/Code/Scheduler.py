@@ -2,12 +2,62 @@ import queue
 import json
 import threading
 from time import sleep
+import requests
 from MyStack import Stack
 from MyLogging import logger
-from MyCrawler import Crawler, MyItem
+from MyCrawler import Crawler, MyItem, IsValidUrl, headers
 
 SrcPath = "../Src/WebPage"
+ImgPath = "../Src/Img"
 BackupPath = "../Src/BackUp"
+
+with open("../Src/Img/Default.jpg", 'rb') as file:
+    DefaultPhoto = file.read()
+
+def _GetItem(id, url):
+    """
+    创建一个 ITEM 对象来存储需要的数据
+    """
+    item = MyItem()
+    item.Id = id
+    item.Url = url
+
+    return item
+
+
+def Save(data, path):
+    """
+    对获取的完整的数据进行保存
+    """
+    with open(path, 'w', encoding='utf-8') as file:
+        json.dump(data, file, ensure_ascii=False)
+
+def Download_Photo(url, path):
+    """
+    下载照片
+    """
+    if not IsValidUrl(url):
+        photo_src = DefaultPhoto
+        logger.warning(f"该图片链接 {url} 无效，使用默认图片")
+    else:
+        response = requests.get(url, headers=headers, stream=True)
+        if response.status_code == 200:
+            photo_src = response.content
+            logger.debug("成功链接, 获取图片")
+        else:
+            photo_src = DefaultPhoto
+            logger.debug("链接失败，使用默认图片")
+
+    with open(path, 'wb') as file:
+        file.write(photo_src)
+
+
+def Read(path):
+    """
+    读取文件
+    """
+    with open(path, 'w', encoding='utf-8') as file:
+        return json.load(file)
 
 
 class MultiThreadCrawler:
@@ -56,12 +106,10 @@ class MultiThreadCrawler:
         while not self._url_allocator.empty():
             unprocessed_urls.append(self._url_allocator.get())
 
-        with open(f"{BackupPath}/unprocessed.txt", 'w', encoding='utf-8') as file:
-            json.dump(unprocessed_urls, file)
+        Save(unprocessed_urls, f"{BackupPath}/unprocessed.txt")
         logger.debug("未处理的链接已保存")
 
-        with open(f"{BackupPath}/processed.txt", 'w', encoding='utf-8') as file:
-            json.dump(self._visited, file)
+        Save(self._visited, f"{BackupPath}/processed.txt")
         logger.debug("已处理的链接已保存")
 
         config_dict = {
@@ -73,8 +121,7 @@ class MultiThreadCrawler:
             "Breadth_First": self._breadth_first
         }
 
-        with open(f"{BackupPath}/config.txt", 'w', encoding='utf-8') as file:
-            json.dump(config_dict, file)
+        Save(config_dict, f"{BackupPath}/config.txt")
         logger.debug("本次任务的配置已保存")
 
     def _GetId(self):
@@ -95,25 +142,6 @@ class MultiThreadCrawler:
             if url not in self._visited:
                 self._url_allocator.put(url)
         logger.debug(f"URL分配器最新的链接数目为 {self._url_allocator.qsize()}")
-
-    def _ToSave(self, item: MyItem):
-        """
-        对获取的完整的数据进行保存
-        """
-        json_str = item.toJson()
-        with open(f"{SrcPath}/web_{item.Id}.txt", 'w', encoding='utf-8') as file:
-            file.write(json_str)
-        logger.info(f"{self._id} 号任务数据保存完毕，任务成功结束")
-
-    def _GetItem(self, id, url):
-        """
-        创建一个 ITEM 对象来存储需要的数据
-        """
-        item = MyItem()
-        item.Id = id
-        item.Url = url
-
-        return item
 
     def handle_task(self):
         """
@@ -137,7 +165,7 @@ class MultiThreadCrawler:
             url = self._url_allocator.get()
             self._visited.append(url)
 
-            item = self._GetItem(id, url)
+            item = _GetItem(id, url)
             spider = Crawler(url)
             spider.Work(item)
 
@@ -148,7 +176,12 @@ class MultiThreadCrawler:
             with self._cond:
                 self._cond.notify_all()
 
-            self._ToSave(item)
+            Save(item.toJson(), f"{SrcPath}/web_{item.Id}.txt")
+            logger.info(f"{self._id} 号任务数据保存完毕，开始下载照片")
+
+            Download_Photo(item.ImgUrl, f"{ImgPath}/{self._id}.jpg")
+            logger.info(f"{self._id} 号任务照片保存完毕，任务结束")
+
             sleep(self._sleep_time)
 
     def _Init_Config(self, target_num, sleep_time, debug):
@@ -187,23 +220,24 @@ class MultiThreadCrawler:
                 t.join()
             logger.debug("所有线程已经退出")
 
-    def ReWork(self):
-        logger.info("开始还原数据...")
-        with open(f"{BackupPath}/config.txt", 'r', encoding='utf-8') as file:
-            config_data = json.load(file)
-            logger.info("成功读取配置文件")
+    def _Read_Backup(self):
+        config_data = Read(f"{BackupPath}/config.txt")
+        logger.info("成功读取配置文件")
 
-        with open(f"{BackupPath}/unprocessed.txt", 'r', encoding='utf-8') as file:
-            unprocessed_urls = json.load(file)
+        unprocessed_urls = Read(f"{BackupPath}/unprocessed.txt")
         for url in unprocessed_urls[1:]:
             self._url_allocator.put(url)
         logger.info("成功读取未处理的链接")
 
-        with open(f"{BackupPath}/processed.txt", 'r', encoding='utf-8') as file:
-            processed_urls = json.load(file)
-        for url in processed_urls:
-            self._visited.append(url)
+        self._visited = Read(f"{BackupPath}/processed.txt")
         logger.info("成功读取处理的链接")
+
+        return config_data, unprocessed_urls[0]
+
+    def ReWork(self):
+        logger.info("开始还原数据...")
+
+        config_data, start_url = self._Read_Backup()
 
         self._id = config_data["ID"]
         self._num_threads = config_data["Threads_Num"]
@@ -211,7 +245,7 @@ class MultiThreadCrawler:
 
         logger.info("数据还原成功，开始工作")
 
-        self.Work(unprocessed_urls[0],
+        self.Work(start_url,
                   config_data["Target_Num"],
                   config_data["Sleep_Time"],
                   config_data["Debug"])

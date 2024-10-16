@@ -1,5 +1,6 @@
 import json
 import requests
+import validators
 from MyLogging import logger
 from bs4 import BeautifulSoup
 
@@ -8,6 +9,15 @@ from bs4 import BeautifulSoup
 并对解析的数据提取标题正文链接等之后返回
 '''''
 PrefixUrl = "https://baike.baidu.com"
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0"}
+
+def IsValidUrl(url):
+    if not validators.url(url):
+        return False
+    else:
+        return True
 
 
 class MyItem:
@@ -19,6 +29,7 @@ class MyItem:
         self.Title = ""
         self.Content = ""
         self.IncludedUrl = []
+        self.ImgUrl = ""
 
     def toJson(self):
         item_dict = {
@@ -29,34 +40,37 @@ class MyItem:
             "urls": self.IncludedUrl
         }
 
-        json_str = json.dumps(item_dict, ensure_ascii=False)
-        return json_str
+        return item_dict
+        # json_str = json.dumps(item_dict, ensure_ascii=False)
+        # return json_str
 
 
 class Crawler:
     def __init__(self, url):
-        self.__Url = url
-        self.__Html = ""
-        self.__Title = ""
-        self.__Content = ""
-        self.__IncludedUrl = []
+        self._Url = url
+        self._Html = ""
+        self._Title = ""
+        self._Content = ""
+        self._IncludedUrl = []
+        self._ImgUrl = ""
 
     # 该模块主要用于爬取数据
     def Downloader(self):
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                          "Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0"}
+        # 先检查链接的正确性
+        if not IsValidUrl(self._Url):
+            logger.warning(f"{self._Url} is invalid!")
+            return -1
 
         # 若没成功获取数据直接返回错误码
-        Response = requests.get(self.__Url, headers=headers, stream=True)
+        Response = requests.get(self._Url, headers=headers, stream=True)
         if not Response.ok:
             status_code = Response.status_code
-            logger.warning(f"{self.__Url} 未正常连接，返回错误码 {status_code}, 跳过对该链接的处理")
+            logger.warning(f"{self._Url} 未正常连接，返回错误码 {status_code}, 跳过对该链接的处理")
             return status_code
 
         # 成功获取后，返回状态码 200
-        logger.debug(f"{self.__Url} 成功爬取该网页")
-        self.__Html = Response.text
+        logger.debug(f"{self._Url} 成功爬取该网页")
+        self._Html = Response.text
         return 200
 
     # 解析标题
@@ -64,7 +78,7 @@ class Crawler:
         title = soup.find("title")
         logger.debug(f"已解析标题: {title}")
         if title:
-            return title.string
+            self._Title = title.string
         else:
             return "None"
 
@@ -74,7 +88,7 @@ class Crawler:
         if meta_tag:
             content = meta_tag['content']
             logger.debug(f"成功解析正文: {content}")
-            return content
+            self._Content = content
         else:
             logger.warning("该正文内容为空")
             return "None"
@@ -82,31 +96,50 @@ class Crawler:
     # 获取超链接
     def ParseUrls(self, soup):
         a_tags = soup.findAll("a", href=True)
+
         for a in a_tags:
             href = a['href']
             # 去除片段标识符
             if "#" not in href and "/s" not in href:
-                self.__IncludedUrl.append(a['href'])
+                self._IncludedUrl.append(a['href'])
 
         # 简单的链接处理添加资源路径
-        self.__IncludedUrl = [PrefixUrl + url if not url.startswith(("http://", "https://")) else url
-                              for url in self.__IncludedUrl]
+        self._IncludedUrl = [PrefixUrl + url if not url.startswith(("http://", "https://")) else url
+                             for url in self._IncludedUrl]
+
+        # 去除其他域下的链接
+        self._IncludedUrl = self._IncludedUrl = [url for url in self._IncludedUrl if url.startswith(PrefixUrl)]
         logger.debug("成功获取所有子链接")
 
-    def Parser(self, item):
-        soup = BeautifulSoup(self.__Html, 'lxml')
+    def _ParserImgUrl(self, soup):
+        # 查找 meta 标签
+        meta_tag = soup.find('meta', property='og:image')
 
-        self.__Title = self.ParseTitle(soup)
-        self.__Content = self.ParseContent(soup)
+        # 获取 content 属性
+        if meta_tag and 'content' in meta_tag.attrs:
+            image_url = meta_tag['content']
+            logger.info(f'获取到的图片链接是: {image_url}')
+            self._ImgUrl = image_url
+        else:
+            logger.warning('未找到指定的 meta 标签')
+
+    def Parser(self, item):
+        soup = BeautifulSoup(self._Html, 'lxml')
+
+        self.ParseTitle(soup)
+        self.ParseContent(soup)
         self.ParseUrls(soup)
+        self._ParserImgUrl(soup)
+
         logger.debug(f"{item.Id} 号的解析任务完成")
 
     def Pack(self, item):
         item.isvalid = True
-        item.Title = self.__Title
-        item.Html = self.__Html
-        item.Content = self.__Content
-        item.IncludedUrl = self.__IncludedUrl
+        item.Title = self._Title
+        item.Html = self._Html
+        item.Content = self._Content
+        item.IncludedUrl = self._IncludedUrl
+        item.ImgUrl = self._ImgUrl
 
     def Work(self, item: MyItem):
 
@@ -114,5 +147,3 @@ class Crawler:
         if self.Downloader() != 200: return
         self.Parser(item)
         self.Pack(item)
-
-        return item

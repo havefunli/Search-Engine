@@ -1,6 +1,6 @@
 import signal
 import sys
-import json
+import requests
 from MyLogging import logger
 from Scheduler import MultiThreadCrawler
 
@@ -19,13 +19,9 @@ if __name__ == '__main__':
 
     crawlers = MultiThreadCrawler(8, True)
     crawlers.Work("https://baike.baidu.com/item/%E4%B8%AD%E5%9B%BD%E5%8E%86%E5%8F%B2/152769?fr=ge_ala",
-                  10,
-                  3,
+                  5000,
+                  5,
                   debug=True)
     # crawlers.ReWork()
 
     logger.info("本次任务执行完成！")
-
-
-
-
