@@ -3,15 +3,13 @@ import requests
 import validators
 from MyLogging import logger
 from bs4 import BeautifulSoup
+from fake_useragent import UserAgent
 
 '''''
 本模块只是负责对数据的爬取
 并对解析的数据提取标题正文链接等之后返回
 '''''
 PrefixUrl = "https://baike.baidu.com"
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0"}
 
 def IsValidUrl(url):
     if not validators.url(url):
@@ -53,6 +51,7 @@ class Crawler:
         self._Content = ""
         self._IncludedUrl = []
         self._ImgUrl = ""
+        self._ua = UserAgent()
 
     # 该模块主要用于爬取数据
     def Downloader(self):
@@ -60,6 +59,10 @@ class Crawler:
         if not IsValidUrl(self._Url):
             logger.warning(f"{self._Url} is invalid!")
             return -1
+
+        # 随机一个用户代理
+        headers = {
+            "User-Agent": self._ua.random}
 
         # 若没成功获取数据直接返回错误码
         try:
