@@ -1,28 +1,26 @@
-from pathlib import Path
 import json
+from pathlib import Path
 import networkx as nx
 
 SrcPath = "../src/WebPage/"
+# 创建 Path 对象
+directory = Path(SrcPath)
+# 使用 iterdir() 获取目录下所有的文件和文件夹
+files_path = [SrcPath + f.name for f in directory.iterdir() if f.is_file()]
 
-
+# 读取文件的 url 以及 urls
 def ReadFile():
     # 所有的连接和子连接
     links = dict()
 
-    # 创建 Path 对象
-    directory = Path(SrcPath)
-
-    # 使用 iterdir() 获取目录下所有的文件和文件夹
-    files_path = [SrcPath + f.name for f in directory.iterdir() if f.is_file()]
-
     for path in files_path:
-        with open(path, encoding='utf-8') as file:
+        with open(path, 'r', encoding='utf-8') as file:
             link = json.load(file)
         links[link["url"]] = link["urls"]
 
     return links
 
-
+# 计算每一个网页的 pagerank
 def CalPageRank(links: dict):
     # 生成图
     G = nx.Graph()
@@ -37,17 +35,18 @@ def CalPageRank(links: dict):
 
     return nx.pagerank(G)
 
+# 将网页的 pagerank 写回文件
+def WriteBack(pagerank):
+    for path in files_path:
+        with open(path, 'r+', encoding='utf-8') as file:
+            link = json.load(file)
+            link['pagerank'] = pagerank.get(link['url'], 0)  # 如果没有pagerank，默认为0
+            file.seek(0)  # 将文件指针移动到文件开头
+            file.truncate()  # 清空文件内容
+            json.dump(link, file, ensure_ascii=False)
+
 
 if __name__ == '__main__':
-    links = {
-        'A': ['B', 'C'],
-        'B': ['D', 'E'],
-        'C': ['F'],
-        'D': ['G'],
-        'E': ['H'],
-        'F': [],
-        'G': [],
-        'H': []
-    }
-
-    print(CalPageRank(links))
+    links = ReadFile()
+    pr = CalPageRank(links)
+    WriteBack(pr)
