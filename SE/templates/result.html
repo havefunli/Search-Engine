@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+    <style>
+        .result-container {
+            display: flex;
+            align-items: flex-start;
+            padding: 15px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .result-image {
+            width: 120px;
+            height: 120px;
+            object-fit: cover;
+            margin-right: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .result-content {
+            flex: 1;
+        }
+        .result-title a {
+            font-size: 18px;
+            font-weight: bold;
+            color: #007bff;
+            text-decoration: none;
+        }
+        .result-title a:hover {
+            text-decoration: underline;
+        }
+        .result-description {
+            margin: 8px 0;
+            font-size: 14px;
+            color: #555;
+        }
+        .result-url {
+            font-size: 12px;
+            color: #008000;
+            text-decoration: none;
+        }
+
+        /* 分页样式 */
+        .pagination {
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            list-style: none;
+            padding: 0;
+        }
+
+        .pagination li {
+            display: inline-block;
+        }
+
+        .pagination button {
+            border: none;
+            background-color: #fff;
+            color: #007bff;
+            cursor: pointer;
+            padding: 10px 15px;
+            font-size: 16px;
+            margin: 0 2px;
+            border-radius: 5px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .pagination button:hover {
+            background-color: #f0f0f0;
+        }
+
+        .pagination button.active {
+            background-color: #3b82f6;  /* 蓝色背景，类似于图片中选中的页码 */
+            color: white;
+        }
+
+        .pagination button.disabled {
+            background-color: #ddd;
+            color: #aaa;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>为您找到以下结果</h1>
+        <a href="/">返回首页</a>
+        <div id="results-container">
+            <!-- 搜索结果会动态加载到这里 -->
+        </div>
+        <ul class="pagination" id="pagination">
+            <!-- 分页按钮会动态生成 -->
+        </ul>
+    </div>
+    <script>
+        let currentPage = 1;
+        let totalPages = {{ total_pages }};
+        let pageCache = {};  // 用于缓存已经加载的页面数据
+
+        // 渲染搜索结果
+        function renderResults(results) {
+            const resultsContainer = document.getElementById('results-container');
+            resultsContainer.innerHTML = ''; // 清空旧内容
+            results.forEach(row => {
+                const resultElement = document.createElement('div');
+                resultElement.classList.add('result-container');
+                resultElement.innerHTML = `
+                    <img src="/static/WebImg/${row.id}.jpg" alt="Result Image" class="result-image">
+                    <div class="result-content">
+                        <div class="result-title">
+                            <a href="${row.url}" target="_blank">${row.title}</a>
+                        </div>
+                        <div class="result-description">
+                            ${row.content}
+                        </div>
+                        <div class="result-url">
+                            ${row.url}
+                        </div>
+                    </div>
+                `;
+                resultsContainer.appendChild(resultElement);
+            });
+        }
+
+        // 渲染分页按钮
+        function renderPagination() {
+            const paginationContainer = document.getElementById('pagination');
+            paginationContainer.innerHTML = ''; // 清空旧分页
+
+            for (let i = 1; i <= totalPages; i++) {
+                const pageButton = document.createElement('button');
+                pageButton.textContent = i;
+                if (i === currentPage) {
+                    pageButton.classList.add('active');
+                }
+                pageButton.onclick = () => {
+                    if (i !== currentPage) {
+                        loadPage(i);
+                    }
+                };
+                const listItem = document.createElement('li');
+                listItem.appendChild(pageButton);
+                paginationContainer.appendChild(listItem);
+            }
+
+            // 添加“下一页”按钮
+            const nextPageButton = document.createElement('button');
+            nextPageButton.textContent = '下一页 >';
+            nextPageButton.disabled = currentPage === totalPages;
+            nextPageButton.className = currentPage === totalPages ? 'disabled' : '';
+            nextPageButton.onclick = () => {
+                if (currentPage < totalPages) {
+                    loadPage(currentPage + 1);
+                }
+            };
+            const nextPageListItem = document.createElement('li');
+            nextPageListItem.appendChild(nextPageButton);
+            paginationContainer.appendChild(nextPageListItem);
+        }
+
+        // 加载指定页面
+        function loadPage(page) {
+            // 如果缓存中已有该页数据，则直接使用缓存
+            if (pageCache[page]) {
+                currentPage = page;
+                renderResults(pageCache[page]);
+                renderPagination();
+                return;
+            }
+
+            // 如果没有缓存，则向服务器请求数据
+            fetch(`/get_page/${page}`)
+                .then(response => response.json())
+                .then(data => {
+                    currentPage = data.current_page;
+                    // 将请求的数据存入缓存
+                    pageCache[page] = data.results;
+                    renderResults(data.results);
+                    renderPagination();
+                })
+                .catch(error => console.error('Error fetching page data:', error));
+        }
+
+        // 初始化加载第一页
+        loadPage(1);
+    </script>
+</body>
+</html>
